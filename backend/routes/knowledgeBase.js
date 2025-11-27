@@ -8,23 +8,32 @@ const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-// @route   GET /api/knowledge-base
-// @desc    Отримати список статей
-// @access  Public
+
 router.get('/', async (req, res) => {
   try {
     const { category, search, active, position, page = 1, limit = 10 } = req.query;
     const query = {};
 
     if (category) query.category = category;
-    if (active !== undefined) query.isActive = active === 'true';
+    
+    // За замовчуванням показуємо тільки активні статті (якщо параметр active не передано явно)
+    if (active !== undefined) {
+      query.isActive = active === 'true';
+    } else {
+      // За замовчуванням тільки активні статті для звичайних користувачів
+      query.isActive = true;
+    }
+    
     if (search) {
       query.$text = { $search: search };
     }
-    
-    // Фільтр по посаді: статті для конкретної посади
+  
     if (position) {
-      query.positions = position;
+      // Знайти статті, де масив positions містить позицію користувача
+      query.positions = { $in: [position] };
+      console.log('Filtering articles by position:', position);
+    } else {
+      console.log('No position filter - showing all articles');
     }
 
     const skip = (page - 1) * limit;
@@ -36,6 +45,8 @@ router.get('/', async (req, res) => {
       .sort(search ? { score: { $meta: 'textScore' } } : { createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+
+    console.log(`Found ${articles.length} articles for query:`, JSON.stringify(query));
 
     const total = await KnowledgeBase.countDocuments(query);
 
@@ -68,8 +79,9 @@ router.get('/category/:categoryId', async (req, res) => {
     };
     
     // Фільтр по посаді якщо вказано
+    // Стаття може бути прив'язана до кількох позицій, тому використовуємо $in
     if (position) {
-      query.positions = position;
+      query.positions = { $in: [position] };
     }
     
     const articles = await KnowledgeBase.find(query)
@@ -87,6 +99,37 @@ router.get('/category/:categoryId', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Помилка при отриманні статей'
+    });
+  }
+});
+
+// @route   GET /api/knowledge-base/access-status
+// @desc    Отримати статус доступу до бази знань
+// @access  Public
+router.get('/access-status', async (req, res) => {
+  try {
+    const SystemSettings = require('../models/SystemSettings');
+    const settings = await SystemSettings.getSettings();
+    
+    // За замовчуванням доступ відкритий, якщо налаштування не встановлено
+    const isAccessEnabled = settings.knowledgeBaseAccess !== 'closed';
+    
+    res.json({
+      success: true,
+      data: {
+        isAccessEnabled,
+        accessStatus: settings.knowledgeBaseAccess || 'open'
+      }
+    });
+  } catch (error) {
+    console.error('Get access status error:', error);
+    // За замовчуванням доступ відкритий при помилці
+    res.json({
+      success: true,
+      data: {
+        isAccessEnabled: true,
+        accessStatus: 'open'
+      }
     });
   }
 });

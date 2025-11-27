@@ -95,6 +95,13 @@ const systemSettingsSchema = new mongoose.Schema({
   systemDescription: {
     type: String,
     default: 'Система навчання та тестування персоналу'
+  },
+  
+  // Налаштування бази знань
+  knowledgeBaseAccess: {
+    type: String,
+    enum: ['open', 'closed', 'position-based'],
+    default: 'open'
   }
 }, {
   timestamps: true
